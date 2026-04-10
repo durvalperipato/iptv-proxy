@@ -1,5 +1,16 @@
 export default async function handler(req, res) {
-    // Pegamos a URL direto da query string sem deixar o Node processar muito
+    // 1. CONFIGURAÇÃO DE HEADERS (Obrigatório para o Chrome Debug aceitar)
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Origin', '*'); 
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+    res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization');
+
+    // 2. RESPONDE AO CHROME QUE O CAMINHO ESTÁ LIVRE
+    // Se não tiver isso, o Flutter Web sempre vai dar "Failed to fetch" no console
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+
     const targetUrl = req.query.url;
 
     if (!targetUrl) {
@@ -10,28 +21,23 @@ export default async function handler(req, res) {
         const response = await fetch(targetUrl, {
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Referer': new URL(targetUrl).origin + '/',
                 'Origin': new URL(targetUrl).origin
             }
         });
 
-        // Se o IPTV retornar erro, a gente quer ver o que ele disse
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("Erro no IPTV:", response.status, errorText);
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            return res.status(response.status).send(errorText);
-        }
-
         const data = await response.arrayBuffer();
         
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-        res.setHeader('Content-Type', response.headers.get('content-type') || 'application/json');
+        // Repassa o Content-Type original (seja JSON ou stream de vídeo)
+        const contentType = response.headers.get('content-type');
+        res.setHeader('Content-Type', contentType || 'application/json');
 
-        return res.status(200).send(Buffer.from(data));
+        return res.status(response.status).send(Buffer.from(data));
+
     } catch (e) {
+        // Log para você ver no painel da Vercel se algo explodir
+        console.error("Erro no Proxy:", e.message);
         return res.status(500).send('Erro no Proxy: ' + e.message);
     }
 }
